@@ -1,16 +1,17 @@
 ---
-name: "Template"
-guid: "eb5d7894-8eef-4b36-aa6f-5d124e828ce1"
-version: "1.0.0.0"
+name: "Thunder Subtitles"
+guid: "e4ce9da9-ef00-417c-96f2-861c512d45eb"
+version: "1.0.4.0"
 targetAbi: "10.7.0.0"
 framework: "net5.0"
-overview: "Short description about your plugin"
+overview: "Download subtitles from Thunder XMP"
 description: >
-  This is a longer description that can span more than one
-  line and include details about your plugin.
-category: "General"
-owner: "jellyfin"
+  Download subtitles from Thunder XMP.
+  https://github.com/jjm2473/jellyfin-plugin-thundersub
+  original source https://github.com/91270/Emby.MeiamSub
+category: "Metadata"
+owner: "jjm2473"
 artifacts:
-- "Jellyfin.Plugin.Template.dll"
+- "Jellyfin.MeiamSub.Thunder.dll"
 changelog: >
-  changelog
+  https://github.com/91270/Emby.MeiamSub/commit/492294941f822595446fedcf268f4117dacebc1c
