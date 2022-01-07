@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Text;
 
-namespace Emby.MeiamSub.Thunder.Model
+namespace Emby.MeiamSub.Shooter.Model
 {
     /// <summary>
     /// DownloadSubInfo.

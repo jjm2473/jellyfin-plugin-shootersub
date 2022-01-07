@@ -1,17 +1,17 @@
 ---
-name: "Thunder Subtitles"
-guid: "e4ce9da9-ef00-417c-96f2-861c512d45eb"
+name: "Shooter Subtitles"
+guid: "b44072e0-f89d-4ddb-ab5d-4b81de0fb759"
 version: "1.0.4.0"
 targetAbi: "10.7.0.0"
 framework: "net5.0"
-overview: "Download subtitles from Thunder XMP"
+overview: "Download subtitles from Shooter.cn"
 description: >
-  Download subtitles from Thunder XMP.
-  https://github.com/jjm2473/jellyfin-plugin-thundersub
+  Download subtitles from Shooter.cn.
+  https://github.com/jjm2473/jellyfin-plugin-shootersub
   original source https://github.com/91270/Emby.MeiamSub
 category: "Metadata"
 owner: "jjm2473"
 artifacts:
-- "Jellyfin.MeiamSub.Thunder.dll"
+- "Jellyfin.MeiamSub.Shooter.dll"
 changelog: >
   https://github.com/91270/Emby.MeiamSub/commit/492294941f822595446fedcf268f4117dacebc1c

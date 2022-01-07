@@ -13,7 +13,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Web;
-using Emby.MeiamSub.Thunder.Model;
+using Emby.MeiamSub.Shooter.Model;
 using MediaBrowser.Controller.Providers;
 using MediaBrowser.Controller.Subtitles;
 using MediaBrowser.Model.Providers;
@@ -24,7 +24,7 @@ namespace Jellyfin.Plugin.Template
     /// <summary>
     /// 射手字幕组件.
     /// </summary>
-    public class ThunderProvider : ISubtitleProvider, IHasOrder
+    public class ShooterProvider : ISubtitleProvider, IHasOrder
     {
         #region 变量声明
 
@@ -43,7 +43,7 @@ namespace Jellyfin.Plugin.Template
         /// </summary>
         public const string SRT = "srt";
 
-        private readonly ILogger<ThunderProvider> _logger;
+        private readonly ILogger<ShooterProvider> _logger;
         private readonly HttpClient _httpClient;
 
         /// <summary>
@@ -54,7 +54,7 @@ namespace Jellyfin.Plugin.Template
         /// <summary>
         /// Gets Name.
         /// </summary>
-        public string Name => "MeiamSub.Thunder";
+        public string Name => "MeiamSub.Shooter";
 
         /// <summary>
         /// Gets 支持电影、剧集.
@@ -64,16 +64,16 @@ namespace Jellyfin.Plugin.Template
 
         #region 构造函数
         /// <summary>
-        /// ThunderProvider.
+        /// ShooterProvider.
         /// </summary>
-        /// <param name="logger">Instance of the <see cref="ILogger{ThunderProvider}"/> interface.</param>
+        /// <param name="logger">Instance of the <see cref="ILogger{ShooterProvider}"/> interface.</param>
         /// <param name="httpClientFactory">The <see cref="IHttpClientFactory"/> for creating Http Clients.</param>
-        public ThunderProvider(ILogger<ThunderProvider> logger, IHttpClientFactory httpClientFactory)
+        public ShooterProvider(ILogger<ShooterProvider> logger, IHttpClientFactory httpClientFactory)
         {
             _logger = logger;
             _httpClient = httpClientFactory.CreateClient(Name);
             _httpClient.Timeout = TimeSpan.FromSeconds(30);
-            _logger.LogDebug("MeiamSub.Thunder init");
+            _logger.LogDebug("MeiamSub.Shooter init");
         }
         #endregion
 
@@ -87,7 +87,7 @@ namespace Jellyfin.Plugin.Template
         /// <returns></returns>
         public async Task<IEnumerable<RemoteSubtitleInfo>> Search(SubtitleSearchRequest request, CancellationToken cancellationToken)
         {
-            _logger.LogDebug("MeiamSub.Thunder  Search | Request -> {Request}", JsonSerializer.Serialize(request));
+            _logger.LogDebug("MeiamSub.Shooter Search | Request -> {Request}", JsonSerializer.Serialize(request));
 
             var subtitles = await SearchSubtitlesAsync(request);
 
@@ -106,62 +106,77 @@ namespace Jellyfin.Plugin.Template
                 return Array.Empty<RemoteSubtitleInfo>();
             }
 
-            var cid = GetCidByFile(request.MediaPath);
+            FileInfo fileInfo = new FileInfo(request.MediaPath);
+
+            var hash = ComputeFileHash(fileInfo);
+
+            HttpContent? content = new FormUrlEncodedContent(new[]
+            {
+                new KeyValuePair<string, string>("filehash", hash),
+                new KeyValuePair<string, string>("pathinfo", request.MediaPath),
+                new KeyValuePair<string, string>("format", "json"),
+                new KeyValuePair<string, string>("lang", request.Language == "chi" ? "chn" : "eng"),
+            });
 
             using var httprequest = new HttpRequestMessage
             {
-                Method = HttpMethod.Get,
-                RequestUri = new Uri($"http://sub.xmp.sandai.net:8000/subxl/{cid}.json"),
+                Method = HttpMethod.Post,
+                RequestUri = new Uri("http://www.shooter.cn/api/subapi.php"),
+                Content = content,
                 Headers =
                 {
-                    UserAgent = { new ProductInfoHeaderValue(new ProductHeaderValue("Emby.MeiamSub.Thunder")) },
+                    UserAgent = { new ProductInfoHeaderValue(new ProductHeaderValue("Emby.MeiamSub.Shooter")) },
                     Accept = { new MediaTypeWithQualityHeaderValue("*/*") }
                 }
             };
 
-            _logger.LogDebug("MeiamSub.Thunder  Search | Request -> {Request}", JsonSerializer.Serialize(httprequest));
+            _logger.LogDebug("MeiamSub.Shooter Search | Request -> {Request} {Content}", JsonSerializer.Serialize(httprequest), await content.ReadAsStringAsync().ConfigureAwait(false));
 
             var response = await _httpClient.SendAsync(httprequest).ConfigureAwait(false);
 
-            _logger.LogDebug("MeiamSub.Thunder  Search | Response -> {Response}", JsonSerializer.Serialize(response));
+            _logger.LogDebug("MeiamSub.Shooter Search | Response -> {Response}", JsonSerializer.Serialize(response));
 
-            if (response.StatusCode == HttpStatusCode.OK)
+            if (response.StatusCode == HttpStatusCode.OK && response.Content.Headers.GetValues("Content-Type").First().Contains("application/json", StringComparison.OrdinalIgnoreCase))
             {
-                var subtitleResponse = JsonSerializer.Deserialize<SubtitleResponseRoot>(await response.Content.ReadAsStringAsync().ConfigureAwait(false));
+                var subtitleResponse = JsonSerializer.Deserialize<List<SubtitleResponseRoot>>(await response.Content.ReadAsStringAsync().ConfigureAwait(false));
 
                 if (subtitleResponse != null)
                 {
-                    _logger.LogDebug("MeiamSub.Thunder Search | Response -> {Response}", JsonSerializer.Serialize(subtitleResponse));
+                    _logger.LogDebug("MeiamSub.Shooter Search | Response -> {Response}", JsonSerializer.Serialize(subtitleResponse));
 
-                    var subtitles = subtitleResponse.sublist.Where(m => !string.IsNullOrEmpty(m.sname));
+                    var remoteSubtitleInfos = new List<RemoteSubtitleInfo>();
 
-                    if (subtitles.Count() > 0)
+                    foreach (var subFileInfo in subtitleResponse)
                     {
-                        _logger.LogDebug("MeiamSub.Thunder Search | Summary -> Get  {Count}  Subtitles", subtitles.Count());
-
-                        return subtitles.Select(m => new RemoteSubtitleInfo()
+                        foreach (var subFile in subFileInfo.Files)
                         {
-                            Id = Base64Encode(JsonSerializer.Serialize(new DownloadSubInfo
+                            remoteSubtitleInfos.Add(new RemoteSubtitleInfo()
                             {
-                                Url = m.surl,
-                                Format = ExtractFormat(m.sname),
-                                Language = request.Language,
-                                TwoLetterISOLanguageName = request.TwoLetterISOLanguageName
-                            })),
-                            Name = $"[MEIAMSUB] { Path.GetFileName(request.MediaPath) } | {request.TwoLetterISOLanguageName} | 迅雷",
-                            Author = "Meiam ",
-                            CommunityRating = Convert.ToSingle(m.rate, CultureInfo.InvariantCulture),
-                            ProviderName = "MeiamSub.Thunder",
-                            Format = ExtractFormat(m.sname),
-                            Comment = $"Format : { ExtractFormat(m.sname)}  -  Rate : { m.rate }"
-                        }).OrderByDescending(m => m.CommunityRating);
+                                Id = Base64Encode(JsonSerializer.Serialize(new DownloadSubInfo
+                                {
+                                    Url = subFile.Link,
+                                    Format = subFile.Ext,
+                                    Language = request.Language,
+                                    TwoLetterISOLanguageName = request.TwoLetterISOLanguageName
+                                })),
+                                Name = $"[MEIAMSUB] { Path.GetFileName(request.MediaPath) } | { request.TwoLetterISOLanguageName } | 射手",
+                                Author = "Meiam ",
+                                ProviderName = "MeiamSub.Shooter",
+                                Format = subFile.Ext,
+                                Comment = $"Format : { ExtractFormat(subFile.Ext)}"
+                            });
+                        }
                     }
+
+                    _logger.LogDebug("MeiamSub.Shooter Search | Summary -> Get  {Count}  Subtitles", remoteSubtitleInfos.Count);
+
+                    return remoteSubtitleInfos;
                 }
             } else {
-                _logger.LogDebug("MeiamSub.Thunder Search | Response -> StatusCode={StatusCode} {Content}", response.StatusCode, await response.Content.ReadAsStringAsync().ConfigureAwait(false));
+                _logger.LogDebug("MeiamSub.Shooter Search | Response -> {Content}", await response.Content.ReadAsStringAsync().ConfigureAwait(false));
             }
 
-            _logger.LogDebug("MeiamSub.Thunder Search | Summary -> Get  0  Subtitles");
+            _logger.LogDebug("MeiamSub.Shooter Search | Summary -> Get  0  Subtitles");
 
             return Array.Empty<RemoteSubtitleInfo>();
         }
@@ -178,7 +193,7 @@ namespace Jellyfin.Plugin.Template
         {
             await Task.Run(() =>
             {
-                _logger.LogDebug("MeiamSub.Thunder  DownloadSub | Request -> {Id}", id);
+                _logger.LogDebug("MeiamSub.Shooter DownloadSub | Request -> {Id}", id);
             }, cancellationToken).ConfigureAwait(false);
 
             return await DownloadSubAsync(id).ConfigureAwait(false);
@@ -195,7 +210,9 @@ namespace Jellyfin.Plugin.Template
 
             if (downloadSub != null)
             {
-                _logger.LogDebug("MeiamSub.Thunder  DownloadSub | Url -> {Url}  |  Format -> {Format} |  Language -> {Language}", downloadSub.Url, downloadSub.Format, downloadSub.Language);
+                downloadSub.Url = downloadSub.Url.Replace("https://www.shooter.cn", "http://www.shooter.cn", StringComparison.Ordinal);
+
+                _logger.LogDebug("MeiamSub.Shooter DownloadSub | Url -> {Url}  |  Format -> {Format} |  Language -> {Language}", downloadSub.Url, downloadSub.Format, downloadSub.Language);
 
                 using var httprequest = new HttpRequestMessage
                 {
@@ -203,14 +220,14 @@ namespace Jellyfin.Plugin.Template
                     RequestUri = new Uri(downloadSub.Url),
                     Headers =
                     {
-                        UserAgent = { new ProductInfoHeaderValue(new ProductHeaderValue("Emby.MeiamSub.Thunder")) },
+                        UserAgent = { new ProductInfoHeaderValue(new ProductHeaderValue("Emby.MeiamSub.Shooter")) },
                         Accept = { new MediaTypeWithQualityHeaderValue("*/*") }
                     }
                 };
 
                 var response = await _httpClient.SendAsync(httprequest).ConfigureAwait(false);
 
-                _logger.LogDebug("MeiamSub.Thunder  DownloadSub | Response -> {StatusCode}", response.StatusCode);
+                _logger.LogDebug("MeiamSub.Shooter DownloadSub | Response -> {StatusCode}", response.StatusCode);
 
                 if (response.StatusCode == HttpStatusCode.OK)
                 {
@@ -258,55 +275,71 @@ namespace Jellyfin.Plugin.Template
         /// </summary>
         /// <param name="text"></param>
         /// <returns></returns>
-        protected string ExtractFormat(string text)
+        protected string? ExtractFormat(string text)
         {
-
-            string result = null;
+            string? result = null;
 
             if (text != null)
             {
-                text = text.ToLower();
-                if (text.Contains(ASS)) result = ASS;
-                else if (text.Contains(SSA)) result = SSA;
-                else if (text.Contains(SRT)) result = SRT;
+                text = text.ToLower(CultureInfo.InvariantCulture);
+                if (text.Contains(ASS, StringComparison.Ordinal)) result = ASS;
+                else if (text.Contains(SSA, StringComparison.Ordinal)) result = SSA;
+                else if (text.Contains(SRT, StringComparison.Ordinal)) result = SRT;
                 else result = null;
             }
+
             return result;
         }
 
         /// <summary>
-        /// 获取文件 CID (迅雷)
+        /// 获取文件 Hash (射手)
         /// </summary>
-        /// <param name="filePath"></param>
+        /// <param name="fileInfo"></param>
         /// <returns></returns>
-        private string GetCidByFile(string filePath)
+        public static string ComputeFileHash(FileInfo fileInfo)
         {
-            var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read);
-            var reader = new BinaryReader(stream);
-            var fileSize = new FileInfo(filePath).Length;
-            var SHA1 = new SHA1CryptoServiceProvider();
-            var buffer = new byte[0xf000];
-            if (fileSize < 0xf000)
-            {
-                reader.Read(buffer, 0, (int)fileSize);
-                buffer = SHA1.ComputeHash(buffer, 0, (int)fileSize);
-            }
-            else
-            {
-                reader.Read(buffer, 0, 0x5000);
-                stream.Seek(fileSize / 3, SeekOrigin.Begin);
-                reader.Read(buffer, 0x5000, 0x5000);
-                stream.Seek(fileSize - 0x5000, SeekOrigin.Begin);
-                reader.Read(buffer, 0xa000, 0x5000);
+            string ret = string.Empty;
 
-                buffer = SHA1.ComputeHash(buffer, 0, 0xf000);
-            }
-            var result = "";
-            foreach (var i in buffer)
+            if (!fileInfo.Exists || fileInfo.Length < 8 * 1024)
             {
-                result += string.Format(CultureInfo.InvariantCulture, "{0:X2}", i);
+                return ret;
             }
-            return result;
+
+            FileStream fs = new FileStream(fileInfo.FullName, FileMode.Open, FileAccess.Read);
+
+            long[] offset = new long[4];
+            offset[3] = fileInfo.Length - (8 * 1024);
+            offset[2] = fileInfo.Length / 3;
+            offset[1] = fileInfo.Length / 3 * 2;
+            offset[0] = 4 * 1024;
+
+            byte[] bBuf = new byte[1024 * 4];
+
+            for (int i = 0; i < 4; ++i)
+            {
+                fs.Seek(offset[i], SeekOrigin.Begin);
+                fs.Read(bBuf, 0, 4 * 1024);
+
+                MD5 md5Hash = MD5.Create();
+                byte[] data = md5Hash.ComputeHash(bBuf);
+                StringBuilder sBuilder = new StringBuilder();
+
+                for (int j = 0; j < data.Length; j++)
+                {
+                    sBuilder.Append(data[j].ToString("x2", CultureInfo.InvariantCulture));
+                }
+
+                if (!string.IsNullOrEmpty(ret))
+                {
+                    ret += ";";
+                }
+
+                ret += sBuilder.ToString();
+            }
+
+            fs.Close();
+
+            return ret;
         }
         #endregion
     }

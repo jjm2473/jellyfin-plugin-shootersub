@@ -4,8 +4,8 @@ using MediaBrowser.Common.Configuration;
 using MediaBrowser.Common.Plugins;
 using MediaBrowser.Model.Serialization;
 
-namespace Jellyfin.Plugin.Template
-{
+namespace Jellyfin.Plugin.Template {
+
     /// <summary>
     /// The main plugin.
     /// </summary>
@@ -23,10 +23,10 @@ namespace Jellyfin.Plugin.Template
         }
 
         /// <inheritdoc />
-        public override string Name => "MeiamSub.Thunder";
+        public override string Name => "Template";
 
         /// <inheritdoc />
-        public override Guid Id => Guid.Parse("e4ce9da9-ef00-417c-96f2-861c512d45eb");
+        public override Guid Id => Guid.Parse("b44072e0-f89d-4ddb-ab5d-4b81de0fb759");
 
         /// <summary>
         /// Gets the current plugin instance.
