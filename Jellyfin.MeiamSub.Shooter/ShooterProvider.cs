@@ -19,7 +19,7 @@ using MediaBrowser.Controller.Subtitles;
 using MediaBrowser.Model.Providers;
 using Microsoft.Extensions.Logging;
 
-namespace Jellyfin.Plugin.Template
+namespace Jellyfin.Plugin.Shooter
 {
     /// <summary>
     /// 射手字幕组件.
