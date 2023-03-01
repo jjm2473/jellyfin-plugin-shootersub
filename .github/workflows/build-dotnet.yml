@@ -22,7 +22,7 @@ jobs:
           dotnet-version: 6.0.x
 
       - name: Build Jellyfin Plugin
-        uses: oddstr13/jellyfin-plugin-repository-manager@v0.4.2
+        uses: oddstr13/jellyfin-plugin-repository-manager@v0.5.1
         id: jprm
         with:
             dotnet-target: net5.0
